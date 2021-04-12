@@ -1,9 +1,18 @@
-### tt wk 15 - deforestation
+#########################################
+### tidytuesday wk 15 - deforestation ###
+#########################################
+
+# source article 
+# https://ourworldindata.org/forests-and-deforestation
+
+#############
+### setup ###
+#############
 
 # set working directory
 setwd("~/GitHub/tidytuesday")
 
-### packages
+# packages
 library(tidytuesdayR)
 library(tidyverse)
 library(countrycode)
@@ -17,10 +26,7 @@ font_add_google("Chivo", "chivo")
 showtext_opts(dpi = 320)
 showtext_auto(enable = TRUE)
 
-### source article 
-# https://ourworldindata.org/forests-and-deforestation
-
-### load data
+# load data
 tuesdata <- tt_load('2021-04-06')
 
 forest <- tuesdata$forest
@@ -29,15 +35,16 @@ brazil_loss <- tuesdata$brazil_loss
 soybean_use <- tuesdata$soybean_use
 vegetable_oil <- tuesdata$vegetable_oil
 
-### add continents
+
+########################
+### Data Preparation ###
+########################
 
 # change datasets from tibble to dataframe
 forest <- data.frame(forest)
 
 # add column for continents
-forest$continent <- countrycode(sourcevar = forest[, "entity"],
-                                origin = "country.name",
-                                destination = "continent")
+forest$continent <- countrycode(sourcevar = forest[, "entity"], origin = "country.name", destination = "continent")
 
 # check country entries by continent and year
 yearsum <- forest %>%
@@ -45,12 +52,9 @@ yearsum <- forest %>%
   group_by(year, continent) %>%
   summarise(Countries = n())
 
-# focus on year = 2015
+# focus on year = 2015 and rank countries by absolute forest conversion for each continent
 forest_2015_tmp <- forest %>%
-  filter(!is.na(continent),
-         year == 2015,
-         net_forest_conversion != 0) %>%
-  # rank countries by absolute forest conversion for each continent
+  filter(!is.na(continent), year == 2015, net_forest_conversion != 0) %>%
   group_by(continent) %>%
   mutate(rank_wi_continent = rank(-abs(net_forest_conversion), ties.method = "first")) %>%
   select(continent, entity, year, net_forest_conversion, rank_wi_continent)
@@ -63,14 +67,12 @@ forest_2015_therest <- forest_2015_tmp %>%
   filter(rank_wi_continent > 10) %>%
   group_by(continent, year) %>%
   summarise(net_forest_conversion = sum(net_forest_conversion)) %>%
-  mutate(entity = "Others",
-         rank_wi_continent = 11)
+  mutate(entity = "Others", rank_wi_continent = 11)
 
 forest_2015 <- forest_2015_top %>%
   bind_rows(forest_2015_therest) %>%
   mutate(forest_change = round(abs(net_forest_conversion)/1000, 0),
-         Afforestation = case_when(net_forest_conversion > 0 ~ "Afforestation (+)",
-                                   net_forest_conversion < 0 ~ "Deforestation (-)"),
+         Afforestation = case_when(net_forest_conversion > 0 ~ "Afforestation (+)", net_forest_conversion < 0 ~ "Deforestation (-)"),
          country_kha = paste(entity, forest_change, sep = " ~"))
   
 
@@ -78,7 +80,7 @@ forest_2015 <- forest_2015_top %>%
 ### build plot ###
 ##################
 
-# this was useful here - 
+# this was useful for this part - 
 # https://www.r-graph-gallery.com/297-circular-barplot-with-groups.html
 
 # set an empty bar
@@ -109,16 +111,12 @@ label_data <- label_data %>%
 # prepare data frame for base lines
 base_data <- forest_2015 %>% 
   group_by(continent) %>% 
-  summarize(start=min(ID), 
-            end=max(ID) - empty_bar) %>% 
+  summarize(start=min(ID), end=max(ID) - empty_bar) %>% 
   rowwise() %>% 
   mutate(title=mean(c(start, end)))
 
 # plot
-p1 <- ggplot(data = forest_2015, 
-            aes(x = ID, 
-                y = forest_change,
-                fill = Afforestation)) +
+p1 <- ggplot(data = forest_2015, aes(x = ID, y = forest_change, fill = Afforestation)) +
   
   # add bars
   geom_bar(stat = "identity", alpha = 0.5) + 
@@ -140,12 +138,11 @@ p1 <- ggplot(data = forest_2015,
     axis.title = element_blank(),
     panel.grid = element_blank(),
     panel.background = element_blank(),
-    #panel.background = element_rect(fill = "whitesmoke"),
-    plot.margin = margin(10, 10, 10, 10, "mm"),
-    plot.background = element_rect(fill = "#e6eaf8"),
     legend.position = c(0.85, 0.92),
     legend.title = element_blank(),
     legend.text = element_text(family = "chivo", size = 4, colour = "grey40"),
+    plot.margin = margin(10, 10, 10, 10, "mm"),
+    plot.background = element_rect(fill = "#e6eaf8"),    
     plot.title = element_text(family = "chivo", hjust = 0, size = 10, lineheight = 3, colour = "grey40"),
     plot.caption = element_text(family = "chivo", size = 3, colour = "grey40")
   ) +
@@ -155,11 +152,7 @@ p1 <- ggplot(data = forest_2015,
   
   # add labels using label_data
   geom_text(data = label_data, 
-            aes(x = ID, 
-                y = forest_change + 100, 
-                label = country_kha, 
-                hjust = hjust
-                ),
+            aes(x = ID, y = forest_change + 100, label = country_kha, hjust = hjust),
             colour = "black",
             family = "chivo",
             #fontface = "bold",
@@ -194,27 +187,26 @@ p2 <- ggdraw() +
              x = 0.08, y = 0.78, fontfamily = "chivo", hjust = 0, color = "grey50", size = 5, lineheight = 3)
 
 # add image of trees
-
-tree <- image_read('../tidytuesday/images/trees.png')
+tree <- image_read('./images/trees.png')
 
 p3 <- ggdraw(p2) +
-  draw_image(
-    tree, x = 0.1, y = -0.41,
-    width = 0.15
-  )
+  draw_image(tree, x = 0.1, y = -0.41, width = 0.15)
 
 # final plot
 # p3
 
-### save the plot
+# save the plot
+png("NetChangeInForestation2015.png", width = 1000, height = 1000) # Open png file
+p3 # Create the plot
+dev.off() # Close the file
 
-# Open png file
-png("NetChangeInForestation2015.png", width = 1000, height = 1000)
-# Create the plot
-p3
-# Close the file
-dev.off()
 
+#############
+### Notes ###
+#############
+
+# The plot doesn't look correct until it's exported in the dimensions set when saving the png file.
+# I need to work my way through some of the warnings created and see if I can tidy this up.
 
 
 
