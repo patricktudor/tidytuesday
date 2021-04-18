@@ -21,9 +21,7 @@ library(transformr)
 
 # add font
 font_add_google("Chivo", "chivo")
-# showtext_opts(dpi = 320)
 showtext_auto(enable = TRUE)
-
 
 # check and load data
 # tt_available()
@@ -43,12 +41,8 @@ state_counties <- post_offices %>%
   group_by(state, county1) %>%
   summarise(total_rows = n())
 
-# since we're summarising the data and errors look to be infrequent, 
-# exact counts (presumably!) don't matter too much, so remove rows with 
-# missing data rather than try to correct them
-
+# summarise post offices open in 2000
 po_2000 <- post_offices %>%
-  # find post offices open in 2000
   filter(established < 2000, discontinued > 2000 | is.na(discontinued)) %>%
   group_by(state, county1) %>%
   summarise(offices = n()) %>%
@@ -63,6 +57,7 @@ po_2000 <- post_offices %>%
 ### Map ###
 ###########
 
+# get map data
 usa_states <- map_data("state", region = ".")
 usa_counties <- map_data("county", region = ".")
 
@@ -75,6 +70,7 @@ states_inc_dc <- tibble(state = state.name) %>%
 usa_map <- usa_counties %>%
   left_join(states_inc_dc, by = c("region" = "state"))
 
+# join to post office data
 usa_map <- usa_map %>%
   inner_join(po_2000, by = c("abb" = "state", "subregion" = "county"))
 
@@ -126,7 +122,7 @@ final_plot <- map_plot +
 final_plot
 
 # save the plot
-png("PostOffices2000.png", width = 1000, height = 1000) # Open png file
+png("PostOffices2000.png", width = 1100, height = 1100) # Open png file
 final_plot # Create the plot
 dev.off() # Close the file
 
