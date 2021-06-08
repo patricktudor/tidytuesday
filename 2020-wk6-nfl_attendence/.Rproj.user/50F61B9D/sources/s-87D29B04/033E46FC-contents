@@ -1,0 +1,231 @@
+---
+title: "NFL Attendence"
+author: "Patrick Tudor"
+date: "`r Sys.Date()`"
+output: github_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+The R markdown file follows along to Julia Silge's YouTube video - https://www.youtube.com/watch?v=LPptRkGoYMg&t=149s
+
+It uses the NFL attendence dataset from tidy tuesday 2020 week 6.
+
+```{r}
+library(tidytuesdayR)
+tuesdata <- tt_load('2020-02-04')
+attendance <- tuesdata$attendance
+games <- tuesdata$games
+standings <- tuesdata$standings
+```
+
+# Data exploration
+
+```{r}
+attendance_joined <- attendance %>%
+  left_join(standings,
+            by = c("year", "team_name", "team"))
+```
+
+```{r}
+attendance_joined %>%
+  filter(!is.na(weekly_attendance)) %>% # nas cause problems with fct_reorder
+  ggplot(aes(x = fct_reorder(team_name, weekly_attendance), # order the teams by attendance
+             y = weekly_attendance,
+             fill = playoffs)) + 
+  geom_boxplot(outlier.alpha = 0.5) +
+  coord_flip()
+```
+
+```{r}
+attendance_joined %>%
+  distinct(team_name, year, margin_of_victory, playoffs) %>%
+  ggplot(aes(x = margin_of_victory, fill = playoffs)) +
+  geom_histogram(position = "identity", alpha = 0.7)
+```
+
+```{r}
+attendance_joined %>%
+  mutate(week = factor(week)) %>%
+  ggplot(aes(x = week, y = weekly_attendance, fill = week)) +
+  geom_boxplot(show.legend = FALSE, outlier.alpha = 0.4)
+```
+
+
+```{r}
+attendance_df <- attendance_joined %>%
+  filter(!is.na(weekly_attendance)) %>%
+  select(weekly_attendance, team_name, year, week,
+         margin_of_victory, strength_of_schedule, playoffs)
+
+attendance_df
+```
+
+
+# Model training
+
+```{r}
+library(tidymodels)
+
+attendance_split <- attendance_df %>%
+  initial_split(strata = playoffs) # stratify by a feature
+
+nfl_train <- training(attendance_split)
+nfl_test <- testing(attendance_split)
+```
+
+Linear regression
+
+```{r}
+# specify model
+lm_spec <- linear_reg() %>%
+  set_engine(engine = "lm") # choose the model to use
+
+# fit model
+lm_fit <- lm_spec %>%
+  fit(weekly_attendance ~ .,
+      data = nfl_train)
+  
+```
+
+```{r}
+# review model
+tidy(lm_fit)
+```
+
+Random Forest
+
+```{r}
+library(ranger)
+
+rf_spec <- rand_forest(mode = "regression") %>%
+  set_engine("ranger")
+
+rf_fit <- rf_spec %>%
+  fit(weekly_attendance ~ .,
+      data = nfl_train)
+```
+
+
+# Model Evaluation
+
+```{r}
+results_train <- lm_fit %>%
+  predict(new_data = nfl_train) %>%
+  mutate(truth = nfl_train$weekly_attendance,
+         model = "lm") %>%
+  bind_rows(rf_fit %>%
+              predict(new_data = nfl_train) %>%
+              mutate(truth = nfl_train$weekly_attendance,
+                    model = "rf"))
+
+results_test <- lm_fit %>%
+  predict(new_data = nfl_test) %>%
+  mutate(truth = nfl_test$weekly_attendance,
+         model = "lm") %>%
+  bind_rows(rf_fit %>%
+              predict(new_data = nfl_test) %>%
+              mutate(truth = nfl_test$weekly_attendance,
+                    model = "rf"))
+```
+
+```{r}
+results_train %>%
+  group_by(model) %>%
+  rmse(truth = truth, estimate = .pred)
+
+results_test %>%
+  group_by(model) %>%
+  rmse(truth = truth, estimate = .pred)
+```
+
+These results show that the random forest model works better on the 
+training data (lower .estimate value) but when both models are run on the
+testing data, the models are similar and show that the rf model is
+overfitting to the training data.
+
+```{r}
+results_test %>%
+  mutate(train = "testing") %>%
+  bind_rows(results_train %>%
+              mutate(train = "training")) %>%
+  ggplot(aes(x = truth, y = .pred, color = model)) +
+  geom_abline(lty = 2, color = "gray80", size = 1.5) +
+  geom_point(alpha = 0.5) + 
+  facet_wrap(~train)
+```
+
+The graph shows that on the testing data the models perform about the same.
+On the training data, the rf model performs better.
+
+## We go again.
+
+We'll use resampling to try and avoid overfitting to give us a better 
+understanding of model performance form the training data.
+
+```{r}
+nfl_folds <- vfold_cv(nfl_train, strata = playoffs) # cross validation
+
+rf_res <- fit_resamples(
+  object = rf_spec,
+  preprocessor = weekly_attendance ~ .,
+  resamples = nfl_folds,
+  control = control_resamples(save_pred = TRUE)
+)
+```
+
+```{r}
+rf_res %>%
+  collect_metrics()
+```
+
+Compare the folds
+
+```{r}
+rf_res %>%
+  unnest(.predictions) %>%
+  ggplot(aes(x = weekly_attendance, y = .pred, color = id)) + 
+  geom_abline(lty = 2, color = "gray80", size = 1.5) +
+  geom_point(alpha = 0.5)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
